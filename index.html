@@ -101,7 +101,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:16px}
 </head>
 <body>
 <header>
-  <h1>📒 Soru Defteri <span class="ver" id="ver">v1.3.0</span></h1>
+  <h1>📒 Soru Defteri <span class="ver" id="ver">v1.3.1</span></h1>
   <button class="hbtn" id="btnTheme" title="Gece / Gündüz">🌙</button>
   <button class="hbtn" id="btnShare" title="Paylaş">📤</button>
 </header>
@@ -275,7 +275,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:16px}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION='1.3.0';
+const VERSION='1.3.1';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 $('#ver').textContent='v'+VERSION;
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200);}
@@ -459,40 +459,73 @@ function analyze(src){
     if(k===2){const m=Math.atan2(c.ss,c.sc)*180/Math.PI;c.hue=m<0?m+360:m;let t=0,b=0;for(;b<32;b++){t+=c.hist[b];if(t>=c.a*.1)break;}c.p10=b*8;} // p10: kalemin kendi koyuluğu
   }
   // Renkli nesneye değen gri nesneler (renkli kalemin soluk kenar izleri) için komşuluk kaydı
-  const link=(a,b)=>{if(!a||!b||a===b)return;const ca=C[a],cb=C[b];if(ca.k===cb.k)return;const n=ca.k===1?ca:cb,o=ca.k===1?b:a;(n.tc||(n.tc=new Set())).add(o);};
+  const link=(a,b)=>{if(!a||!b||a===b)return;const ca=C[a],cb=C[b];if(ca.k===cb.k)return;const n=ca.k===1?ca:cb,o=ca.k===1?b:a;(n.tc||(n.tc=new Set())).add(o);n.tcn=(n.tcn||0)+1;};
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x,l=lab[p];if(!l)continue;if(x+1<w)link(l,lab[p+1]);if(y+1<h)link(l,lab[p+w]);}
-  // Baskı harf yüksekliği (H): koyu çekirdekli gri nesnelerin ortanca yüksekliği
+  // Nesne koyuluğu (dk): piksellerinin en koyu %5'inin seviyesi
+  const dks=[];
+  for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1)continue;const need=Math.max(3,c.a*.05);let t=0,b=0;for(;b<32;b++){t+=c.hist[b];if(t>=need)break;}c.dk=Math.min(255,b*8+8);
+    const bh=c.y1-c.y0+1;if(c.a>=12&&bh>=6&&bh<=h/6)dks.push(c.dk);}
+  // Bu fotoğrafta baskının siyahı (Bk): harf boyundaki nesnelerin en koyu %15'lik seviyesi.
+  // Eşik buna göre kurulur; soluk ya da bulanık çekimde siyah baskı kurşun kalem sanılmaz.
+  dks.sort((x,y)=>x-y);const Bk=dks.length?dks[Math.floor(dks.length*.15)]:60;
+  // Baskı harf yüksekliği (H): baskı koyuluğundaki nesnelerin ortanca yüksekliği
   const hs=[];
-  for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1||c.a<10)continue;const bh=c.y1-c.y0+1;if(bh<6||bh>h/6)continue;let dk=0;for(let b=0;b<14;b++)dk+=c.hist[b];if(dk>=3)hs.push(bh);}
+  for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1||c.a<10||c.dk>Bk+56)continue;const bh=c.y1-c.y0+1;if(bh>=6&&bh<=h/6)hs.push(bh);}
   hs.sort((a,b)=>a-b);const H=hs.length>=3?hs[hs.length>>1]:Math.max(w,h)/45;
+  // Baskı / kurşun kalem eşiği (T0): nesne koyuluklarını alan ağırlıklı iki kümeye ayır (Otsu).
+  // İki belirgin küme varsa (koyu baskı + daha açık kurşun kalem) eşik aralarındadır;
+  // tek küme varsa kurşun kalem yok sayılır ve eşik yüksek tutulur, baskı silinmez.
+  const wh=new Float64Array(33);let wt=0;
+  for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1||c.a<8)continue;const wgt=Math.min(c.a,9*H*H);wh[Math.min(32,c.dk>>3)]+=wgt;wt+=wgt;}
+  let T0=Math.min(190,Bk+100);
+  if(wt>0){let best=0,bt=-1,w0=0,s0=0,sAll=0;for(let b=0;b<33;b++)sAll+=b*wh[b];
+    let bm0=0,bm1=0,bw0=0;
+    for(let b=0;b<32;b++){w0+=wh[b];s0+=b*wh[b];const w1=wt-w0;if(w0<=0||w1<=0)continue;const m0=s0/w0,m1=(sAll-s0)/w1,v=w0*w1*(m1-m0)*(m1-m0);if(v>best){best=v;bt=b;bm0=m0;bm1=m1;bw0=w0/wt;}}
+    if(bt>=0&&(bm1-bm0)*8>=40&&bw0>=.04&&bw0<=.96){
+      // Açık kümenin çoğu harf boyundaysa bu kurşun kalem değil, ince/soluk baskıdır: ayırma, baskıyı koru
+      const t=bt*8+8;let big=0,all=0;
+      for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1||c.a<8||c.dk<=t)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;all+=c.a;if(bh>1.6*H||bw>8*H)big+=c.a;}
+      if(all>0&&big/all>=.3)T0=t;}}
   // Basılı çerçeve / kutu: piksellerinin neredeyse tamamı sınır dikdörtgeninin kenarlarındadır (el çizimi böyle olmaz)
   let anyChk=false;
   for(let i=1;i<C.length;i++){const c=C[i],bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;if(bw>3*H&&bh>1.2*H){c.tol=Math.max(3,.04*Math.max(bw,bh));c.cnt=0;anyChk=true;}}
   if(anyChk){for(let y=0;y<h;y++)for(let x=0;x<w;x++){const l=lab[y*w+x];if(!l)continue;const c=C[l];if(c.tol===undefined)continue;
       if(x-c.x0<c.tol||c.x1-x<c.tol||y-c.y0<c.tol||c.y1-y<c.tol)c.cnt++;}
     for(let i=1;i<C.length;i++){const c=C[i];if(c.tol!==undefined)c.fr=c.cnt/c.a;}}
-  return{src,w,h,N,d,Lm,cls,hue,lab,C,H};
+  return{src,w,h,N,d,Lm,cls,hue,lab,C,H,Bk,T0};
 }
 /* keep[l]: 0 sil, 1 koyu çekirdeğe yakın kısmı tut (büyük baskı nesnesi), 2 tamamını tut */
 function decide(an,strength,ovr,userHues){
-  const{C,H}=an,n=C.length,keep=new Uint8Array(n),lo=Math.round(176-strength*1.1),lb=lo>>3,glyphs=[];
-  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1)continue;let dk=0;for(let b=0;b<lb;b++)dk+=c.hist[b];
-    c.core=dk>=Math.min(3,Math.max(1,c.a>>2));
-    if(c.core){const bh=c.y1-c.y0+1;keep[i]=bh<=1.7*H?2:1;if(bh<=3*H)glyphs.push(c);}}
+  // Eşik fotoğrafın kendisinden gelir (T0); kaydırıcı onu koyuya ya da açığa kaydırır
+  const{C,H,T0,Bk}=an,n=C.length,keep=new Uint8Array(n),lo=Math.max(80,Math.min(200,Math.round(T0+(45-strength)*1.2))),glyphs=[];
+  // rim: renkli bir nesnenin kenarına yapışık ince gri şerit (renkli mürekkebin soluk kenarı); kendi başına harf değildir
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1)continue;c.rim=!!c.tc&&c.tcn/c.a>=.25;c.core=!c.rim&&c.dk<=lo&&(c.a>=.04*H*H||c.dk<=Bk+48); // minik ve soluk leke kendi başına baskı sayılmaz
+    if(c.core){const bh=c.y1-c.y0+1;keep[i]=bh<=1.7*H?2:1;if(bh<=3*H&&bh>=.35*H)glyphs.push(c);}}
   const near=(c,mx,my)=>glyphs.some(g=>g.x0-mx<=c.x1&&g.x1+mx>=c.x0&&g.y0-my<=c.y1&&g.y1+my>=c.y0);
   // Aynı satırda, yanında baskı harfi olan nesne (şık harfi gibi)
   const lineAdj=c=>{const bh=c.y1-c.y0+1;if(bh<.4*H||bh>1.7*H)return false;
-    return glyphs.some(g=>{const ov=Math.min(c.y1,g.y1)-Math.max(c.y0,g.y0)+1;return ov>=.4*Math.min(bh,g.y1-g.y0+1)&&g.x0-2.5*H<=c.x1&&g.x1+2.5*H>=c.x0;});};
-  // Soluk gri nesneler: yalnızca küçük ve baskının hemen yanındaysa baskıdır (üs, ince işaret); gerisi kurşun kalem
-  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;
-    if(c.fr>.8||(bh<=1.5*H&&bw<=2.5*H&&near(c,.6*H,.6*H)))keep[i]=2;
-    else if(bh<.5*H&&bw<=14*H){ // kesir çizgisi: üstünde ve altında baskı var
+    return glyphs.some(g=>{if(g.k!==1||g.y1-g.y0+1<.45*H)return false;const ov=Math.min(c.y1,g.y1)-Math.max(c.y0,g.y0)+1;return ov>=.4*Math.min(bh,g.y1-g.y0+1)&&g.x0-2.5*H<=c.x1&&g.x1+2.5*H>=c.x0;});};
+  // Soluk gri nesneler: baskı satırının parçasıysa baskıdır (ince harf, üs, işaret); gerisi kurşun kalem.
+  // Satır boyunca zincirleme: tutulan soluk harf, yanındaki soluk harfi de korur.
+  const core0=glyphs.length,onLine=(c,from)=>{const bh=c.y1-c.y0+1;for(let j=from;j<glyphs.length;j++){const g=glyphs[j],ov=Math.min(c.y1,g.y1)-Math.max(c.y0,g.y0)+1;
+    if(ov>=.4*Math.min(bh,g.y1-g.y0+1)&&g.x0-3*H<=c.x1&&g.x1+3*H>=c.x0)return true;}return false;};
+  // İnce işaret (=, −): bir harfin satır yüksekliği içinde ve yakınında
+  const inLine=c=>{const cyc=(c.y0+c.y1)/2;return glyphs.some(g=>g.y0<=cyc&&g.y1>=cyc&&g.x0-1.5*H<=c.x1&&g.x1+1.5*H>=c.x0);};
+  const nearCore=(c,m)=>{for(let j=0;j<core0;j++){const g=glyphs[j];if(g.x0-m<=c.x1&&g.x1+m>=c.x0&&g.y0-m<=c.y1&&g.y1+m>=c.y0)return true;}return false;};
+  for(let pass=0,from=0;pass<4;pass++){const start=glyphs.length;
+    for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core||c.rim||keep[i])continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;
+      if(pass===0&&c.fr>.8){keep[i]=2;continue;}
+      if(bh>1.6*H||bw>8*H||c.dk>lo+72)continue;
+      if((pass===0&&bw<=2.5*H&&nearCore(c,.6*H))||(bh>=.3*H&&onLine(c,from))||(bh<.3*H&&bw<=1.5*H&&inLine(c))){keep[i]=2;if(bh>=.4*H)glyphs.push(c);}}
+    if(glyphs.length===start)break;from=start;}
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core||keep[i])continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;
+    if(bh<.5*H&&bw<=14*H){ // kesir çizgisi: üstünde ve altında baskı var
       const ovx=g=>g.x0<=c.x1&&g.x1>=c.x0;
       if(glyphs.some(g=>ovx(g)&&g.y1<=c.y0+2&&c.y0-g.y1<.9*H)&&glyphs.some(g=>ovx(g)&&g.y0>=c.y1-2&&g.y0-c.y1<.9*H))keep[i]=2;}}
   // Renkli nesneler: harften belirgin büyük ve çizgi gibi olanlar kalemdir; onların tonu kalem tonudur
   const pens=userHues.slice(),penC=[];
   for(let i=1;i<n;i++){const c=C[i];if(c.k!==2)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,fill=c.a/(bw*bh);
-    const big=bh>1.6*H||(bw>2*H&&bh<.6*H);c.blob=(fill>.65&&Math.min(bw,bh)>1.2*H)||(fill>.5&&(c.x0===0||c.y0===0||c.x1===an.w-1||c.y1===an.h-1)); // dolu şekil ya da kenarda kesilmiş süs
+    const big=bh>1.6*H||(bw>2*H&&bh<.6*H);c.blob=(fill>.8&&Math.min(bw,bh)>1.2*H)||(fill>.65&&Math.min(bw,bh)>2*H)||(fill>.5&&(c.x0===0||c.y0===0||c.x1===an.w-1||c.y1===an.h-1)); // dolu şekil ya da kenarda kesilmiş süs
     if(c.fr>.8)c.blob=true;
     c.pen=big&&!c.blob;if(c.pen){pens.push(c.hue);penC.push(c);}}
   for(let i=1;i<n;i++){const c=C[i];if(c.k!==2)continue;
@@ -504,8 +537,16 @@ function decide(an,strength,ovr,userHues){
       const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,sm=bw<=H&&bh<=H,cl=pens.some(u=>hueDist(c.hue,u)<30);
       keep[i]=(sm&&cl&&penC.some(g=>g.x0-H<=c.x1&&g.x1+H>=c.x0&&g.y0-H<=c.y1&&g.y1+H>=c.y0))?0:2;}
   }
+  // İkinci tur: tutulan renkli harfler (şık harfleri) de satır çapasıdır; yanlarındaki soluk baskı korunur
+  {const from=glyphs.length;for(let i=1;i<n;i++){const c=C[i],bh=c.y1-c.y0+1;if(c.k===2&&keep[i]&&!c.blob&&bh>=.4*H&&bh<=1.7*H)glyphs.push(c);}
+   for(let pass=0,f=from;pass<4;pass++){const start=glyphs.length;
+     for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core||c.rim||keep[i])continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;
+       if(bh>1.6*H||bw>8*H||c.dk>lo+72)continue;
+       if((bh>=.3*H&&onLine(c,f))||(bh<.3*H&&bw<=1.5*H&&inLine(c))){keep[i]=2;if(bh>=.4*H)glyphs.push(c);}}
+     if(glyphs.length===start)break;f=start;}
+   for(let i=1;i<n;i++){const c=C[i];if(c.k===2&&keep[i]&&!c.pen&&!c.adj)c.adj=lineAdj(c);}}
   // Silinen renkli kaleme yapışık soluk gri parça, kalemin kenar izidir
-  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core||!keep[i]||!c.tc)continue;for(const t of c.tc)if(!keep[t]){keep[i]=0;break;}}
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||!c.tc)continue;if(c.core&&!(c.dk>Bk+48&&c.y1-c.y0+1<=H))continue;if(c.rim)keep[i]=2;if(!keep[i])continue;for(const t of c.tc)if(!keep[t]){keep[i]=0;break;}}
   // Tutulan bir baskı harfinin hemen dibindeki minik renkli parça (nokta, virgül) baskıdır
   const kc=[];for(let i=1;i<n;i++){const c=C[i];if(c.k===2&&keep[i]&&!c.blob)kc.push(c);}
   for(let i=1;i<n;i++){const c=C[i];if(c.k!==2||keep[i]||c.pen)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,m=.45*H;
@@ -519,30 +560,31 @@ function findSlots(an,keep){
   const{C,H}=an,n=C.length,raw=[],gl=[],rem=[],med=a=>{a=a.slice().sort((x,y)=>x-y);return a[a.length>>1];};
   for(let i=1;i<n;i++){const c=C[i];
     if(c.k===2){if(keep[i]&&c.adj)raw.push(c);else if(!keep[i]&&c.a>.05*H*H)rem.push(c);}
-    else if(keep[i]&&c.core&&c.y1-c.y0+1<=1.7*H)gl.push(c);}
+    else if(keep[i]&&c.y1-c.y0+1<=1.7*H&&c.y1-c.y0+1>=.3*H)gl.push(c);}
   raw.sort((a,b)=>a.x0-b.x0);let L=[];
   for(const c of raw){const m=L.find(l=>c.x0-l.x1<.45*H&&c.x0>=l.x0-.2*H&&Math.min(c.y1,l.y1)-Math.max(c.y0,l.y0)>0);
     if(m){m.x1=Math.max(m.x1,c.x1);m.y0=Math.min(m.y0,c.y0);m.y1=Math.max(m.y1,c.y1);m.r+=c.sr;m.g+=c.sg;m.b+=c.sb;m.a+=c.a;}
     else L.push({x0:c.x0,y0:c.y0,x1:c.x1,y1:c.y1,r:c.sr,g:c.sg,b:c.sb,a:c.a});}
   const cy=o=>(o.y0+o.y1)/2,sameLine=(a,b)=>Math.min(a.y1,b.y1)-Math.max(a.y0,b.y0)>=.4*Math.min(a.y1-a.y0,b.y1-b.y0);
   const rowsOf=items=>{const R=[];items.slice().sort((a,b)=>cy(a)-cy(b)).forEach(o=>{const r=R.find(r=>Math.abs(r.cy-cy(o))<.6*H);if(r)r.it.push(o);else R.push({cy:cy(o),it:[o]});});R.forEach(r=>r.it.sort((a,b)=>a.x0-b.x0));return R;};
-  // Soru numarası da renkli olabilir: şıklardan ayrı duran ilk etiketi at
+  const nextG=(x,ref,max)=>{let b=null;for(const g of gl){if(g.x0<x-.2*H||g.x0-x>max||!sameLine(g,ref))continue;if(!b||g.x0<b.x0)b=g;}return b;};
+  // Şık etiketi: dar (harf + parantez), solunda hemen bir şey yok, sağında değeri var. Renkli kelimeler elenir.
+  const leftBusy=l=>gl.some(g=>g.y1-g.y0+1>=.45*H&&sameLine(g,l)&&g.x1<l.x0+.2*H&&l.x0-g.x1<.8*H)||raw.some(c=>c.x1<l.x0-1&&sameLine(c,l)&&l.x0-c.x1<.8*H);
+  L=L.filter(l=>l.x1-l.x0+1<=2.2*H&&!leftBusy(l)&&nextG(l.x1,l,2.5*H));
+  // Aynı satırda birden çok etiket varsa şıklar oradadır; yoksa alt alta dizilidir (soru numarası da renkli olabilir: baştaki ayrık etiketi at)
   let R=rowsOf(L);
-  if(R.length>=2&&R[0].it.length===1){const rest=R.slice(1),multi=rest.some(r=>r.it.length>=2);
-    if(multi)L=L.filter(l=>l!==R[0].it[0]);
-    else if(rest.length>=3){const xs=rest.map(r=>r.it[0].x0),gaps=rest.slice(1).map((r,i)=>r.cy-rest[i].cy);
-      if(Math.abs(R[0].it[0].x0-med(xs))>.6*H||rest[0].cy-R[0].cy>1.8*med(gaps))L=L.filter(l=>l!==R[0].it[0]);}
-    R=rowsOf(L);}
+  if(R.some(r=>r.it.length>=2)){L=L.filter(l=>R.some(r=>r.it.length>=2&&r.it.includes(l)));R=rowsOf(L);}
+  else if(R.length>=4){const rest=R.slice(1),xs=rest.map(r=>r.it[0].x0),gp=rest.slice(1).map((r,i)=>r.cy-rest[i].cy);
+    if(Math.abs(R[0].it[0].x0-med(xs))>.6*H||rest[0].cy-R[0].cy>1.8*med(gp)){L=L.filter(l=>l!==R[0].it[0]);R=rowsOf(L);}}
   if(L.length<3||L.length>4)return[];
   // Her etiketin parantezi ve değeri
-  const nextG=(x,ref,max)=>{let b=null;for(const g of gl){if(g.x0<x-.2*H||g.x0-x>max||!sameLine(g,ref))continue;if(!b||g.x0<b.x0)b=g;}return b;};
   const gaps=[];
   for(const l of L){l.e=l.x1;let g=nextG(l.x1,l,2.5*H);
     if(g&&g.x1-g.x0+1<.35*H&&g.y1-g.y0+1>.8*(l.y1-l.y0)&&g.x0-l.x1<.4*H){l.e=g.x1;l.y0=Math.min(l.y0,g.y0);l.y1=Math.max(l.y1,g.y1);g=nextG(l.e+1,l,2.5*H);}
     if(g){l.vx=g.x0;gaps.push(g.x0-l.e);}}
   if(gaps.length<2)return[];
   const gV=med(gaps),wL=med(L.map(l=>l.e-l.x0+1)),hL=med(L.map(l=>l.y1-l.y0+1));
-  const startOfRun=g=>!gl.some(k=>k!==g&&sameLine(k,g)&&k.x1<g.x0+.2*H&&g.x0-k.x1<1.3*H)&&!L.some(l=>sameLine(l,g)&&l.x0<g.x0&&g.x0-l.e<2.5*H);
+  const startOfRun=g=>!gl.some(k=>k!==g&&k.y1-k.y0+1>=.45*H&&sameLine(k,g)&&k.x1<g.x0+.2*H&&g.x0-k.x1<1.3*H)&&!L.some(l=>sameLine(l,g)&&l.x0<g.x0&&g.x0-l.e<2.5*H);
   const evid=g=>{const ax0=g.x0-gV-1.8*wL,ax1=g.x0+.3*H,ay0=g.y0-.4*H,ay1=g.y1+.4*H;return rem.some(c=>c.x0<=ax1&&c.x1>=ax0&&c.y0<=ay1&&c.y1>=ay0);};
   const column=R.length>=3&&R.every(r=>r.it.length===1),vx=L.filter(l=>l.vx!==undefined).map(l=>l.vx);
   const pitch=column?med(R.slice(1).map((r,i)=>r.cy-R[i].cy)):0,slots=[];
