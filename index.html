@@ -53,7 +53,7 @@ input[type=range]{width:100%}
 #cropWrap{display:flex;justify-content:center;background:#222;border-radius:10px;overflow:hidden;touch-action:none}
 #cropCanvas{touch-action:none;display:block}
 #cleanWrap{background:repeating-conic-gradient(#ddd 0 25%,#fff 0 50%) 0 0/16px 16px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
-#cleanCanvas{display:block;width:100%;height:auto;touch-action:none}
+#cleanCanvas{display:block;width:100%;height:auto;touch-action:manipulation;cursor:pointer}
 .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .qc{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;box-shadow:var(--shadow);display:flex;flex-direction:column}
 .qc .im{background:#fff;height:120px;display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -101,7 +101,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:16px}
 </head>
 <body>
 <header>
-  <h1>📒 Soru Defteri <span class="ver" id="ver">v1.1.0</span></h1>
+  <h1>📒 Soru Defteri <span class="ver" id="ver">v1.2.0</span></h1>
   <button class="hbtn" id="btnTheme" title="Gece / Gündüz">🌙</button>
   <button class="hbtn" id="btnShare" title="Paylaş">📤</button>
 </header>
@@ -177,21 +177,13 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:16px}
     </div>
 
     <div id="stepClean" class="card" style="display:none">
+      <p class="muted" style="margin-top:0"><b>Dokunarak düzelt:</b> kalan el yazısına dokun, silinir. Yanlışlıkla silinen baskıya dokun, geri gelir.</p>
       <div id="cleanWrap"><canvas id="cleanCanvas"></canvas></div>
-      <label class="f">Kurşun kalem silme gücü: <span id="strV">40</span></label>
-      <input type="range" id="str" min="0" max="100" value="40">
-      <p class="muted" style="margin:2px 0 0">İz kalıyorsa artır; sorunun yazısı silikleşiyorsa azalt.</p>
+      <label class="f">Kurşun kalem silme gücü: <span id="strV">45</span></label>
+      <input type="range" id="str" min="0" max="100" value="45">
+      <p class="muted" style="margin:2px 0 0">Kurşun kalem izi kalıyorsa artır; baskı siliniyorsa azalt.</p>
       <div class="row" style="margin-top:8px">
-        <label class="muted"><input type="checkbox" id="keepColor" checked> Renkli baskıyı koru</label>
-      </div>
-      <div class="card" style="margin:10px 0 0;padding:10px;box-shadow:none">
-        <div class="row">
-          <button class="btn" id="btnPick">🎯 Renkli kalem sil</button>
-          <span id="hueChips" class="row" style="gap:6px"></span>
-        </div>
-        <p class="muted" id="pickHint" style="margin:6px 0 0">Tükenmez/keçeli kalemle yazılmışsa butona bas, sonra yazının tam üstüne dokun. O renk sorunun her yerinden silinir.</p>
-        <label class="f">Renk toleransı: <span id="tolV">14</span>°</label>
-        <input type="range" id="tol" min="6" max="40" value="14">
+        <label class="muted"><input type="checkbox" id="ghost"> Silinenleri soluk kırmızı göster</label>
       </div>
       <div class="row" style="margin-top:10px">
         <button class="btn" id="btnEraser">🧽 Silgi</button>
@@ -280,7 +272,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:16px}
 <div class="toast" id="toast"></div>
 
 <script>
-const VERSION='1.1.0';
+const VERSION='1.2.0';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 $('#ver').textContent='v'+VERSION;
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200);}
@@ -355,7 +347,7 @@ $('#dDel').onclick=async()=>{if(!confirm('Bu soru defterden silinsin mi?'))retur
 $('#dEdit').onclick=()=>{const q=Q.find(x=>x.id===detId);$('#detail').classList.remove('on');startEditInfo(q);};
 
 /* ---------- Editör: yükleme ---------- */
-const ed={src:null,rot90:0,fine:0,rotC:null,sel:null,k:1,cropC:null,procC:null,strokes:[],eraser:false,pick:false,hues:[],editId:null,durum:'Yanlış'};
+const ed={src:null,rot90:0,fine:0,rotC:null,sel:null,k:1,cropC:null,procC:null,strokes:[],eraser:false,ovr:new Map(),uh:[],acts:[],an:null,dec:null,editId:null,durum:'Yanlış'};
 $('#btnCam').onclick=()=>$('#inCam').click();$('#btnGal').onclick=()=>$('#inGal').click();
 ['#inCam','#inGal'].forEach(s=>$(s).onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadFile(f);});
 async function loadFile(f){
@@ -364,12 +356,12 @@ async function loadFile(f){
     bmp=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f);});}
   const W=bmp.width,H=bmp.height,s=Math.min(1,2600/Math.max(W,H));
   const c=document.createElement('canvas');c.width=Math.round(W*s);c.height=Math.round(H*s);c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
-  Object.assign(ed,{src:c,rot90:0,fine:0,strokes:[],editId:null,eraser:false,pick:false,hues:[],strTouched:false});$('#str').value=40;$('#strV').textContent='40';setModes();renderHues();$('#fine').value=0;$('#fineV').textContent='0°';
+  Object.assign(ed,{src:c,rot90:0,fine:0,strokes:[],editId:null,eraser:false});setModes();$('#fine').value=0;$('#fineV').textContent='0°';
   resetForm();
   $('#pickBox').style.display='none';$('#editor').style.display='block';goStep(1);buildRot();
 }
 function goStep(n){[1,2,3].forEach(i=>$('#st'+i).classList.toggle('on',i===n));$('#stepCrop').style.display=n===1?'block':'none';$('#stepClean').style.display=n===2?'block':'none';$('#stepInfo').style.display=n===3?'block':'none';window.scrollTo(0,0);}
-function closeEditor(){$('#editor').style.display='none';$('#pickBox').style.display='block';ed.src=ed.rotC=ed.cropC=ed.procC=null;ed.editId=null;$('#st1').style.display=$('#st2').style.display='';}
+function closeEditor(){$('#editor').style.display='none';$('#pickBox').style.display='block';ed.src=ed.rotC=ed.cropC=ed.procC=ed.an=ed.dec=null;ed.editId=null;$('#st1').style.display=$('#st2').style.display='';}
 
 /* ---------- Kırpma ---------- */
 function buildRot(){
@@ -412,7 +404,7 @@ window.addEventListener('resize',()=>{if($('#stepCrop').style.display!=='none')d
 $('#next1').onclick=()=>{
   const s=ed.sel;if(s.w<20||s.h<20){toast('Soruyu çerçevele');return;}
   const sc=Math.min(2,1800/Math.max(s.w,s.h)),c=document.createElement('canvas');c.width=Math.round(s.w*sc);c.height=Math.round(s.h*sc);
-  c.getContext('2d').drawImage(ed.rotC,s.x,s.y,s.w,s.h,0,0,c.width,c.height);ed.cropC=c;ed.strokes=[];goStep(2);runClean();
+  c.getContext('2d').drawImage(ed.rotC,s.x,s.y,s.w,s.h,0,0,c.width,c.height);ed.cropC=c;ed.strokes=[];ed.ovr=new Map();ed.uh=[];ed.acts=[];ed.an=null;$('#ghost').checked=false;goStep(2);runClean();
 };
 
 /* ---------- Temizleme (gölge + kurşun kalem) ---------- */
@@ -420,16 +412,23 @@ function gridMax(a,gw,gh,r){const o=new Float32Array(a.length);for(let y=0;y<gh;
 function gridBlur(a,gw,gh,r){const o=new Float32Array(a.length);for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){let s=0,n=0;for(let j=Math.max(0,y-r);j<=Math.min(gh-1,y+r);j++)for(let i=Math.max(0,x-r);i<=Math.min(gw-1,x+r);i++){s+=a[j*gw+i];n++;}o[y*gw+x]=s/n;}return o;}
 function hueOf(r,g,b,mx,mn){const d=mx-mn;let h;if(mx===r)h=((g-b)/d)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;return h<0?h+360:h;}
 function hueDist(a,b){const d=Math.abs(a-b)%360;return d>180?360-d:d;}
-function cleanImage(src,strength,keepColor,hues=[],tol=16){
-  const w=src.width,h=src.height,out=document.createElement('canvas');out.width=w;out.height=h;
-  const g=out.getContext('2d',{willReadFrequently:true});g.drawImage(src,0,0);const id=g.getImageData(0,0,w,h),d=id.data;
-  // 1) Kağıt arka planını blok bazında tahmin et (gölge / sarı ışık düzeltme)
+/* Nesne tabanlı temizleme:
+   1) Kağıt beyaza normallenir (gölge / sarı ışık gider)
+   2) Mürekkep pikselleri birbirine değen parçalara (nesne) ayrılır
+   3) Her nesneye boyut, koyuluk, renk ve konumuna göre "baskı" ya da "el yazısı" kararı verilir
+   4) Yalnızca baskı nesneleri çizilir; kullanıcı dokunarak her kararı tersine çevirebilir */
+const COS=new Float32Array(361),SIN=new Float32Array(361);for(let i=0;i<=360;i++){COS[i]=Math.cos(i*Math.PI/180);SIN[i]=Math.sin(i*Math.PI/180);}
+function analyze(src){
+  const w=src.width,h=src.height,N=w*h,cv=document.createElement('canvas');cv.width=w;cv.height=h;
+  const g=cv.getContext('2d',{willReadFrequently:true});g.drawImage(src,0,0);const d=g.getImageData(0,0,w,h).data;
+  // Kağıt arka planını blok bazında tahmin et
   const B=Math.max(8,Math.round(Math.max(w,h)/48)),gw=Math.ceil(w/B),gh=Math.ceil(h/B);
   let bg=[0,1,2].map(()=>new Float32Array(gw*gh));
   for(let y=0;y<h;y++){const gy=(y/B|0)*gw;for(let x=0;x<w;x++){const i=(y*w+x)*4,gi=gy+(x/B|0);for(let c=0;c<3;c++)if(d[i+c]>bg[c][gi])bg[c][gi]=d[i+c];}}
   bg=bg.map(a=>{let m=gridMax(a,gw,gh,1);const srt=[...m].sort((p,q)=>p-q),paper=srt[Math.floor(srt.length*.7)]||255;for(let i=0;i<m.length;i++)if(m[i]<paper*.55)m[i]=paper*.55;return gridBlur(gridBlur(m,gw,gh,1),gw,gh,1);});
-  const bR=bg[0],bG=bg[1],bB=bg[2],N=w*h;
-  const Lm=new Uint8Array(N),kind=new Uint8Array(N); // kind: 0 gri, 1 renkli baskı, 2 kalem rengi
+  const bR=bg[0],bG=bg[1],bB=bg[2];
+  // cls: 0 kağıt, 1 gri/siyah mürekkep, 2 renkli mürekkep
+  const Lm=new Uint8Array(N),cls=new Uint8Array(N),hue=new Uint16Array(N);
   for(let y=0;y<h;y++){
     let fy=(y+.5)/B-.5;if(fy<0)fy=0;let y0=fy|0;if(y0>gh-1)y0=gh-1;const y1=Math.min(gh-1,y0+1),ty=fy-y0;
     for(let x=0;x<w;x++){
@@ -438,70 +437,146 @@ function cleanImage(src,strength,keepColor,hues=[],tol=16){
       const i=(y*w+x)*4;
       let r=d[i]*255/(bR[a]*w00+bR[b]*w10+bR[c2]*w01+bR[e]*w11+1e-3),gg=d[i+1]*255/(bG[a]*w00+bG[b]*w10+bG[c2]*w01+bG[e]*w11+1e-3),bb=d[i+2]*255/(bB[a]*w00+bB[b]*w10+bB[c2]*w01+bB[e]*w11+1e-3);
       if(r>255)r=255;if(gg>255)gg=255;if(bb>255)bb=255;
-      const L=.299*r+.587*gg+.114*bb,mx=Math.max(r,gg,bb),mn=Math.min(r,gg,bb);
-      d[i]=r;d[i+1]=gg;d[i+2]=bb;const p=y*w+x;Lm[p]=L;
-      if(hues.length&&mx-mn>16&&hues.some(u=>hueDist(hueOf(r,gg,bb,mx,mn),u)<=tol))kind[p]=2;
-      else if(keepColor&&mx-mn>48&&L<238)kind[p]=1;
+      const L=.299*r+.587*gg+.114*bb,mx=Math.max(r,gg,bb),mn=Math.min(r,gg,bb),p=y*w+x;
+      d[i]=r;d[i+1]=gg;d[i+2]=bb;Lm[p]=L;
+      if(mx-mn>40&&L<240){cls[p]=2;hue[p]=hueOf(r,gg,bb,mx,mn)|0;}else if(L<205)cls[p]=1;
     }
   }
-  // 2) Kalem rengi maskesini birkaç piksel genişlet: kenar kırıntıları da gitsin (koyu baskı korunur)
-  const rr=Math.max(1,Math.round(Math.max(w,h)/500));
-  if(hues.length){
-    const m2=new Uint8Array(N);
-    for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(kind[y*w+x]!==2)continue;
-      for(let j=Math.max(0,y-rr);j<=Math.min(h-1,y+rr);j++)for(let k=Math.max(0,x-rr);k<=Math.min(w-1,x+rr);k++)m2[j*w+k]=1;}
-    for(let p=0;p<N;p++){if(!m2[p]||kind[p]===2)continue;
-      if(kind[p]===0){if(Lm[p]>90)kind[p]=2;}
-      else{const i=p*4,r=d[i],g2=d[i+1],b2=d[i+2],mx=Math.max(r,g2,b2),mn=Math.min(r,g2,b2),hh=hueOf(r,g2,b2,mx,mn);if(hues.some(u=>hueDist(hh,u)<=tol+8))kind[p]=2;}}
+  // Bağlı parçalar (aynı sınıftan, 8 komşuluk)
+  const lab=new Int32Array(N),stk=new Int32Array(N),C=[null];
+  for(let s=0;s<N;s++){
+    if(!cls[s]||lab[s])continue;
+    const k=cls[s],id=C.length,c={k,a:0,x0:w,y0:h,x1:0,y1:0,hist:new Uint32Array(32),sc:0,ss:0,hue:0,p10:0,fr:0};C.push(c);
+    let sp=0;stk[sp++]=s;lab[s]=id;
+    while(sp){
+      const p=stk[--sp],x=p%w,y=(p/w)|0;c.a++;if(x<c.x0)c.x0=x;if(x>c.x1)c.x1=x;if(y<c.y0)c.y0=y;if(y>c.y1)c.y1=y;
+      c.hist[Lm[p]>>3]++;if(k===2){c.sc+=COS[hue[p]];c.ss+=SIN[hue[p]];}
+      for(let j=-1;j<=1;j++){const Y=y+j;if(Y<0||Y>=h)continue;for(let m=-1;m<=1;m++){const X=x+m;if(X<0||X>=w)continue;const q=Y*w+X;if(cls[q]===k&&!lab[q]){lab[q]=id;stk[sp++]=q;}}}
+    }
+    if(k===2){const m=Math.atan2(c.ss,c.sc)*180/Math.PI;c.hue=m<0?m+360:m;let t=0,b=0;for(;b<32;b++){t+=c.hist[b];if(t>=c.a*.1)break;}c.p10=b*8;} // p10: kalemin kendi koyuluğu
   }
-  // 3) Baskı / el yazısı ayrımı: baskı yazısının koyu bir çekirdeği vardır.
-  //    Koyu çekirdekten başlayıp yalnızca birkaç piksel uzağa kadar (yumuşak kenarlar) büyüt.
-  //    Çekirdeği olmayan soluk kurşun kalem izleri ve çekirdekten uzak kalem çizgileri silinir.
-  const lo=185-strength*1.1, hi=Math.min(235,lo+80), maxD=rr+2;
-  const keep=new Uint8Array(N),dist=new Uint8Array(N),qu=new Int32Array(N);let qh=0,qt=0;
-  for(let p=0;p<N;p++)if(kind[p]===0&&Lm[p]<lo){keep[p]=1;qu[qt++]=p;}
+  // Renkli nesneye değen gri nesneler (renkli kalemin soluk kenar izleri) için komşuluk kaydı
+  const link=(a,b)=>{if(!a||!b||a===b)return;const ca=C[a],cb=C[b];if(ca.k===cb.k)return;const n=ca.k===1?ca:cb,o=ca.k===1?b:a;(n.tc||(n.tc=new Set())).add(o);};
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x,l=lab[p];if(!l)continue;if(x+1<w)link(l,lab[p+1]);if(y+1<h)link(l,lab[p+w]);}
+  // Baskı harf yüksekliği (H): koyu çekirdekli gri nesnelerin ortanca yüksekliği
+  const hs=[];
+  for(let i=1;i<C.length;i++){const c=C[i];if(c.k!==1||c.a<10)continue;const bh=c.y1-c.y0+1;if(bh<6||bh>h/6)continue;let dk=0;for(let b=0;b<14;b++)dk+=c.hist[b];if(dk>=3)hs.push(bh);}
+  hs.sort((a,b)=>a-b);const H=hs.length>=3?hs[hs.length>>1]:Math.max(w,h)/45;
+  // Basılı çerçeve / kutu: piksellerinin neredeyse tamamı sınır dikdörtgeninin kenarlarındadır (el çizimi böyle olmaz)
+  let anyChk=false;
+  for(let i=1;i<C.length;i++){const c=C[i],bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;if(bw>3*H&&bh>1.2*H){c.tol=Math.max(3,.04*Math.max(bw,bh));c.cnt=0;anyChk=true;}}
+  if(anyChk){for(let y=0;y<h;y++)for(let x=0;x<w;x++){const l=lab[y*w+x];if(!l)continue;const c=C[l];if(c.tol===undefined)continue;
+      if(x-c.x0<c.tol||c.x1-x<c.tol||y-c.y0<c.tol||c.y1-y<c.tol)c.cnt++;}
+    for(let i=1;i<C.length;i++){const c=C[i];if(c.tol!==undefined)c.fr=c.cnt/c.a;}}
+  return{src,w,h,N,d,Lm,cls,hue,lab,C,H};
+}
+/* keep[l]: 0 sil, 1 koyu çekirdeğe yakın kısmı tut (büyük baskı nesnesi), 2 tamamını tut */
+function decide(an,strength,ovr,userHues){
+  const{C,H}=an,n=C.length,keep=new Uint8Array(n),lo=Math.round(176-strength*1.1),lb=lo>>3,glyphs=[];
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1)continue;let dk=0;for(let b=0;b<lb;b++)dk+=c.hist[b];
+    c.core=dk>=Math.min(3,Math.max(1,c.a>>2));
+    if(c.core){const bh=c.y1-c.y0+1;keep[i]=bh<=1.7*H?2:1;if(bh<=3*H)glyphs.push(c);}}
+  const near=(c,mx,my)=>glyphs.some(g=>g.x0-mx<=c.x1&&g.x1+mx>=c.x0&&g.y0-my<=c.y1&&g.y1+my>=c.y0);
+  // Aynı satırda, yanında baskı harfi olan nesne (şık harfi gibi)
+  const lineAdj=c=>{const bh=c.y1-c.y0+1;if(bh<.4*H||bh>1.7*H)return false;
+    return glyphs.some(g=>{const ov=Math.min(c.y1,g.y1)-Math.max(c.y0,g.y0)+1;return ov>=.4*Math.min(bh,g.y1-g.y0+1)&&g.x0-2.5*H<=c.x1&&g.x1+2.5*H>=c.x0;});};
+  // Soluk gri nesneler: yalnızca küçük ve baskının hemen yanındaysa baskıdır (üs, ince işaret); gerisi kurşun kalem
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1;
+    if(c.fr>.8||(bh<=1.5*H&&bw<=2.5*H&&near(c,.6*H,.6*H)))keep[i]=2;
+    else if(bh<.5*H&&bw<=14*H){ // kesir çizgisi: üstünde ve altında baskı var
+      const ovx=g=>g.x0<=c.x1&&g.x1>=c.x0;
+      if(glyphs.some(g=>ovx(g)&&g.y1<=c.y0+2&&c.y0-g.y1<.9*H)&&glyphs.some(g=>ovx(g)&&g.y0>=c.y1-2&&g.y0-c.y1<.9*H))keep[i]=2;}}
+  // Renkli nesneler: harften belirgin büyük ve çizgi gibi olanlar kalemdir; onların tonu kalem tonudur
+  const pens=userHues.slice(),penC=[];
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==2)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,fill=c.a/(bw*bh);
+    const big=bh>1.6*H||(bw>2*H&&bh<.6*H);c.blob=(fill>.65&&Math.min(bw,bh)>1.2*H)||(fill>.5&&(c.x0===0||c.y0===0||c.x1===an.w-1||c.y1===an.h-1)); // dolu şekil ya da kenarda kesilmiş süs
+    if(c.fr>.8)c.blob=true;
+    c.pen=big&&!c.blob;if(c.pen){pens.push(c.hue);penC.push(c);}}
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==2)continue;
+    if(c.pen){keep[i]=0;continue;}
+    const adj=lineAdj(c),match=pens.some(u=>hueDist(c.hue,u)<12);
+    if(c.blob||adj)keep[i]=2;
+    else if(match)keep[i]=0;
+    else{ // kalem çizgisinin dibinde, tonu kaleme yakın küçük parça: kalemden kopmuş kırıntı
+      const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,sm=bw<=H&&bh<=H,cl=pens.some(u=>hueDist(c.hue,u)<30);
+      keep[i]=(sm&&cl&&penC.some(g=>g.x0-H<=c.x1&&g.x1+H>=c.x0&&g.y0-H<=c.y1&&g.y1+H>=c.y0))?0:2;}
+  }
+  // Silinen renkli kaleme yapışık soluk gri parça, kalemin kenar izidir
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==1||c.core||!keep[i]||!c.tc)continue;for(const t of c.tc)if(!keep[t]){keep[i]=0;break;}}
+  // Tutulan bir baskı harfinin hemen dibindeki minik renkli parça (nokta, virgül) baskıdır
+  const kc=[];for(let i=1;i<n;i++){const c=C[i];if(c.k===2&&keep[i]&&!c.blob)kc.push(c);}
+  for(let i=1;i<n;i++){const c=C[i];if(c.k!==2||keep[i]||c.pen)continue;const bw=c.x1-c.x0+1,bh=c.y1-c.y0+1,m=.45*H;
+    if(bw<.6*H&&bh<.6*H&&(near(c,m,m)||kc.some(g=>g.x0-m<=c.x1&&g.x1+m>=c.x0&&g.y0-m<=c.y1&&g.y1+m>=c.y0)))keep[i]=2;}
+  for(const[l,v]of ovr)keep[l]=v?2:0;
+  return{keep,pens,lo};
+}
+const GAM=new Uint8Array(256);for(let i=0;i<256;i++)GAM[i]=i>=246?255:Math.round(255*Math.pow(i/255,1.8));
+function renderClean(an,dec,ghost){
+  const{w,h,N,d,Lm,cls,lab,C,H}=an,{keep,lo}=dec;
+  const out=document.createElement('canvas');out.width=w;out.height=h;const g=out.getContext('2d'),id=g.createImageData(w,h),o=id.data;
+  const kp=new Uint8Array(N),qu=new Int32Array(N),dist=new Uint8Array(N);let qh=0,qt=0;
+  const maxD=Math.max(2,Math.round(H/14));
+  for(let p=0;p<N;p++){const l=lab[p];if(!l)continue;const k=keep[l];
+    if(k===2)kp[p]=1;else if(k===1&&Lm[p]<lo){kp[p]=1;qu[qt++]=p;}
+    // Renkli kalemin altında kalan siyah baskı: kalemin kendisinden belirgin koyu pikseller gri olarak kalır
+    else if(k===0&&cls[p]===2&&Lm[p]<100&&Lm[p]<C[l].p10-20)kp[p]=2;
+  }
+  // Büyük baskı nesnelerinde yalnızca koyu çekirdeğe birkaç piksel uzaklıktaki kısım (ona değen kalem çizgisi kesilir)
   while(qh<qt){const p=qu[qh++],x=p%w,y=(p/w)|0,dd=dist[p]+1;if(dd>maxD)continue;
-    for(let j=-1;j<=1;j++)for(let k=-1;k<=1;k++){const X=x+k,Y=y+j;if(X<0||Y<0||X>=w||Y>=h)continue;const q=Y*w+X;
-      if(!keep[q]&&kind[q]===0&&Lm[q]<hi){keep[q]=1;dist[q]=dd;qu[qt++]=q;}}}
+    for(let j=-1;j<=1;j++){const Y=y+j;if(Y<0||Y>=h)continue;for(let m=-1;m<=1;m++){const X=x+m;if(X<0||X>=w)continue;const q=Y*w+X;
+      if(!kp[q]&&lab[q]&&keep[lab[q]]===1){kp[q]=1;dist[q]=dd;qu[qt++]=q;}}}}
+  // Kalem altından kurtarılan piksellerde tek tük kalanları at (3x3'te en az 5 komşu)
+  const drop=[];
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const p=y*w+x;if(kp[p]!==2)continue;let c=0;for(let j=-1;j<=1;j++)for(let m=-1;m<=1;m++)if(kp[p+j*w+m])c++;if(c<5)drop.push(p);}
+  for(const p of drop)kp[p]=0;
+  // Tutulan piksellerin çevresi (yumuşak kenar)
+  const r=Math.max(1,Math.round(H/14)),hp=new Uint8Array(N),cn=new Uint8Array(N);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x;if(!kp[p])continue;const t=(cls[p]===2&&kp[p]===1)?2:1;
+    for(let j=Math.max(0,y-r);j<=Math.min(h-1,y+r);j++)for(let m=Math.max(0,x-r);m<=Math.min(w-1,x+r);m++){const q=j*w+m;if(t===2&&cls[q]!==2)cn[q]=1;if(!kp[q]&&!lab[q]&&hp[q]<t)hp[q]=t;}}
   for(let p=0,i=0;p<N;p++,i+=4){
-    if(kind[p]===1)continue;
-    if(kind[p]===2||!keep[p]){d[i]=d[i+1]=d[i+2]=255;continue;}
-    const L=Lm[p],v=L<lo?L*.6:L*.6+(L-lo)/(hi-lo)*(255-L*.6)*.85;d[i]=d[i+1]=d[i+2]=v;
+    o[i+3]=255;
+    if(cn[p]&&Lm[p]>110&&kp[p]!==2){o[i]=d[i];o[i+1]=d[i+1];o[i+2]=d[i+2];}
+    else if(kp[p]){if(cls[p]===2&&kp[p]===1){o[i]=d[i];o[i+1]=d[i+1];o[i+2]=d[i+2];}else o[i]=o[i+1]=o[i+2]=GAM[Lm[p]];}
+    else if(hp[p]===2){o[i]=d[i];o[i+1]=d[i+1];o[i+2]=d[i+2];}
+    else if(hp[p]===1)o[i]=o[i+1]=o[i+2]=GAM[Lm[p]];
+    else if(ghost&&lab[p]){o[i]=255;o[i+1]=o[i+2]=150+Lm[p]*.35;}
+    else o[i]=o[i+1]=o[i+2]=255;
   }
   g.putImageData(id,0,0);return out;
 }
 function drawStroke(g,st){g.strokeStyle='#fff';g.fillStyle='#fff';g.lineCap=g.lineJoin='round';g.lineWidth=st.r*2;g.beginPath();g.moveTo(st.p[0].x,st.p[0].y);st.p.forEach(p=>g.lineTo(p.x,p.y));if(st.p.length===1){g.arc(st.p[0].x,st.p[0].y,st.r,0,7);g.fill();}else g.stroke();}
 function paintClean(showOrig){const c=$('#cleanCanvas'),p=ed.procC;c.width=p.width;c.height=p.height;const g=c.getContext('2d');if(showOrig){g.drawImage(ed.cropC,0,0);return;}g.drawImage(p,0,0);ed.strokes.forEach(s=>drawStroke(g,s));}
-let cleanT=null;
-function runClean(){clearTimeout(cleanT);cleanT=setTimeout(()=>{ed.procC=cleanImage(ed.cropC,+$('#str').value,$('#keepColor').checked,ed.hues,+$('#tol').value);paintClean();},30);}
-$('#tol').oninput=e=>{$('#tolV').textContent=e.target.value;if(ed.hues.length)runClean();};
-function setModes(){$('#btnEraser').classList.toggle('on',ed.eraser);$('#brushBox').style.display=ed.eraser?'block':'none';$('#btnPick').classList.toggle('on',ed.pick);$('#cleanCanvas').style.cursor=ed.pick?'crosshair':'';}
-function renderHues(){$('#hueChips').innerHTML=ed.hues.map((h,i)=>`<button class="btn" data-hi="${i}" style="padding:4px 8px"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;background:hsl(${h},80%,55%)"></span> ✕</button>`).join('');}
-$('#hueChips').onclick=e=>{const b=e.target.closest('[data-hi]');if(!b)return;ed.hues.splice(+b.dataset.hi,1);renderHues();runClean();};
-$('#btnPick').onclick=()=>{ed.pick=!ed.pick;if(ed.pick)ed.eraser=false;setModes();if(ed.pick)toast('Kalem yazısının üstüne dokun');};
-/* Dokunulan yerdeki en doygun piksellerden kalem tonunu bul */
-function pickHue(x,y){
-  const c=ed.cropC,R=Math.max(4,Math.round(c.width/120)),x0=Math.max(0,Math.round(x-R)),y0=Math.max(0,Math.round(y-R)),w=Math.min(c.width-x0,2*R),h=Math.min(c.height-y0,2*R);
-  const d=c.getContext('2d').getImageData(x0,y0,w,h).data,arr=[];
-  for(let i=0;i<d.length;i+=4){const mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]);if(mx-mn>30)arr.push({s:mx-mn,h:hueOf(d[i],d[i+1],d[i+2],mx,mn)});}
-  if(arr.length<3)return null;arr.sort((a,b)=>b.s-a.s);const top=arr.slice(0,Math.max(3,arr.length>>2));
-  let sx=0,sy=0;top.forEach(t=>{sx+=Math.cos(t.h*Math.PI/180);sy+=Math.sin(t.h*Math.PI/180);});let m=Math.atan2(sy,sx)*180/Math.PI;if(m<0)m+=360;
-  // Tüm görüntüde bu tona yakın (±22°) doygun piksellerin ortalaması: kalemin gerçek tonu
-  const all=c.getContext('2d').getImageData(0,0,c.width,c.height).data;sx=sy=0;let n=0;
-  for(let i=0;i<all.length;i+=8){const mx=Math.max(all[i],all[i+1],all[i+2]),mn=Math.min(all[i],all[i+1],all[i+2]);if(mx-mn<40)continue;const hh=hueOf(all[i],all[i+1],all[i+2],mx,mn);if(hueDist(hh,m)>22)continue;sx+=Math.cos(hh*Math.PI/180);sy+=Math.sin(hh*Math.PI/180);n++;}
-  if(n>50){m=Math.atan2(sy,sx)*180/Math.PI;if(m<0)m+=360;}
-  return m;
+function doClean(ghost){
+  if(!ed.an||ed.an.src!==ed.cropC)ed.an=analyze(ed.cropC);
+  ed.dec=decide(ed.an,+$('#str').value,ed.ovr,ed.uh);ed.procC=renderClean(ed.an,ed.dec,ghost);paintClean();
 }
-$('#str').oninput=e=>{ed.strTouched=true;$('#strV').textContent=e.target.value;runClean();};$('#keepColor').onchange=runClean;
-$('#btnEraser').onclick=()=>{ed.eraser=!ed.eraser;if(ed.eraser)ed.pick=false;setModes();};
-$('#btnUndo').onclick=()=>{ed.strokes.pop();paintClean();};
-const orig=$('#btnOrig');['pointerdown'].forEach(v=>orig.addEventListener(v,()=>paintClean(true)));['pointerup','pointerleave','pointercancel'].forEach(v=>orig.addEventListener(v,()=>ed.procC&&paintClean()));
+let cleanT=null;
+function runClean(){clearTimeout(cleanT);cleanT=setTimeout(()=>doClean($('#ghost').checked),30);}
+function setModes(){$('#btnEraser').classList.toggle('on',ed.eraser);$('#brushBox').style.display=ed.eraser?'block':'none';$('#cleanCanvas').style.touchAction=ed.eraser?'none':'manipulation';}
+$('#str').oninput=e=>{$('#strV').textContent=e.target.value;runClean();};$('#ghost').onchange=runClean;
+$('#btnEraser').onclick=()=>{ed.eraser=!ed.eraser;setModes();};
+$('#btnUndo').onclick=()=>{
+  const a=ed.acts.pop();if(!a){toast('Geri alınacak işlem yok');return;}
+  if(a.t==='s'){ed.strokes.pop();paintClean();return;}
+  if(a.prev===undefined)ed.ovr.delete(a.l);else ed.ovr.set(a.l,a.prev);if(a.hue)ed.uh.pop();runClean();
+};
+const orig=$('#btnOrig');orig.addEventListener('pointerdown',()=>ed.procC&&paintClean(true));['pointerup','pointerleave','pointercancel'].forEach(v=>orig.addEventListener(v,()=>ed.procC&&paintClean()));
 let curStroke=null;
 function cPt(e){const c=$('#cleanCanvas'),b=c.getBoundingClientRect(),k=c.width/b.width;return{x:(e.clientX-b.left)*k,y:(e.clientY-b.top)*k,k};}
+/* Dokun: en yakın nesnenin kararını tersine çevir */
+$('#cleanCanvas').addEventListener('click',e=>{
+  if(ed.eraser||!ed.an||!ed.dec)return;
+  const{w,h,lab,C}=ed.an,pt=cPt(e),R=Math.round(18*pt.k),cx=Math.round(pt.x),cy=Math.round(pt.y);let best=0,bd=R*R+1;
+  for(let y=Math.max(0,cy-R);y<=Math.min(h-1,cy+R);y++)for(let x=Math.max(0,cx-R);x<=Math.min(w-1,cx+R);x++){const l=lab[y*w+x];if(!l)continue;const dd=(x-cx)*(x-cx)+(y-cy)*(y-cy);if(dd<bd){bd=dd;best=l;}}
+  if(!best){toast('Burada yazı yok');return;}
+  const c=C[best],kept=ed.dec.keep[best]>0,act={t:'o',l:best,prev:ed.ovr.get(best),hue:false};
+  ed.ovr.set(best,!kept);
+  if(kept&&c.k===2){ed.uh.push(c.hue);act.hue=true;toast('Bu renkteki kalem yazıları silindi');}
+  else toast(kept?'Silindi':'Geri getirildi');
+  ed.acts.push(act);runClean();
+});
 $('#cleanCanvas').addEventListener('pointerdown',e=>{
-  if(ed.pick){const p=cPt(e),h=pickHue(p.x,p.y);if(h==null){toast('Renkli iz bulunamadı, yazının tam üstüne dokun');return;}
-    ed.hues.push(Math.round(h));ed.pick=false;if(!ed.strTouched){$('#str').value=15;$('#strV').textContent='15';}setModes();renderHues();runClean();toast('Kalem rengi silindi');return;}
-  if(!ed.eraser)return;e.preventDefault();$('#cleanCanvas').setPointerCapture(e.pointerId);const p=cPt(e);curStroke={r:(+$('#brush').value/2)*p.k,p:[{x:p.x,y:p.y}]};ed.strokes.push(curStroke);drawStroke($('#cleanCanvas').getContext('2d'),curStroke);});
+  if(!ed.eraser)return;e.preventDefault();$('#cleanCanvas').setPointerCapture(e.pointerId);const p=cPt(e);curStroke={r:(+$('#brush').value/2)*p.k,p:[{x:p.x,y:p.y}]};ed.strokes.push(curStroke);ed.acts.push({t:'s'});drawStroke($('#cleanCanvas').getContext('2d'),curStroke);});
 $('#cleanCanvas').addEventListener('pointermove',e=>{if(!curStroke)return;const p=cPt(e);curStroke.p.push({x:p.x,y:p.y});const g=$('#cleanCanvas').getContext('2d'),n=curStroke.p.length;drawStroke(g,{r:curStroke.r,p:curStroke.p.slice(n-2)});});
 ['pointerup','pointercancel'].forEach(v=>$('#cleanCanvas').addEventListener(v,()=>{curStroke=null;}));
 $('#cleanCanvas').addEventListener('touchmove',e=>{if(ed.eraser)e.preventDefault();},{passive:false});
@@ -515,7 +590,7 @@ function trimWhite(c){
   const o=document.createElement('canvas');o.width=x1-x0+1;o.height=y1-y0+1;const g=o.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,o.width,o.height);g.drawImage(c,x0,y0,o.width,o.height,0,0,o.width,o.height);return o;
 }
 let finalC=null;
-$('#next2').onclick=()=>{paintClean();finalC=trimWhite($('#cleanCanvas'));const im=new Image();im.src=finalC.toDataURL('image/jpeg',.8);im.style.cssText='max-width:100%;max-height:220px;display:inline-block';$('#infoPrev').innerHTML='';$('#infoPrev').appendChild(im);goStep(3);};
+$('#next2').onclick=()=>{clearTimeout(cleanT);doClean(false);finalC=trimWhite($('#cleanCanvas'));const im=new Image();im.src=finalC.toDataURL('image/jpeg',.8);im.style.cssText='max-width:100%;max-height:220px;display:inline-block';$('#infoPrev').innerHTML='';$('#infoPrev').appendChild(im);goStep(3);};
 $('#back3').onclick=()=>{if(ed.editId){closeEditor();showTab('tabDefter');}else goStep(2);};
 
 /* ---------- Bilgiler & kaydet ---------- */

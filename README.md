@@ -7,10 +7,9 @@ Test kitabında yanlış yaptığın veya boş bıraktığın soruları fotoğra
 ## Özellikler
 - 📷 Kameradan çek veya 🖼️ galeriden seç
 - ✂️ Kırpma, 90° ve ince döndürme (eğik çekim düzeltme)
-- 🧽 Otomatik temizleme: gölge ve sarı ışık düzeltilir, kurşun kalem izleri (gri) silinir, renkli baskı korunur
-- 🎯 Renkli kalem sil: yazıya dokun, o renk (tükenmez/keçeli) tüm sorudan silinir
-- Baskı yazısı koyu çekirdeğinden tanınıp korunur; soluk el yazısı izleri silinir
-- Ayarlanabilir silme gücü + elle silgi + geri al
+- 🧽 Otomatik temizleme: gölge ve sarı ışık düzeltilir; her yazı parçası ayrı nesne olarak tanınır, boyut, koyuluk, renk ve konumuna göre baskı / el yazısı ayrılır
+- Kurşun kalem ve renkli kalem (tükenmez, keçeli) izleri silinir; şık harfleri, kesir çizgisi, üsler, renkli kutular korunur
+- 👆 Dokunarak düzelt: kalan yazıya dokun silinir, yanlış silinen baskıya dokun geri gelir; silgi ve geri al
 - Ders, konu, kaynak, sayfa, durum (Yanlış/Boş), doğru cevap, not
 - Filtreleme, arama, "Öğrendim" işareti
 - 🖨️ A4 çıktı: 1/2/3 sütun, sorular boşluk kalmayacak şekilde yerleştirilir, isteğe bağlı cevap anahtarı
