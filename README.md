@@ -8,6 +8,8 @@ Test kitabında yanlış yaptığın veya boş bıraktığın soruları fotoğra
 - 📷 Kameradan çek veya 🖼️ galeriden seç
 - ✂️ Kırpma, 90° ve ince döndürme (eğik çekim düzeltme)
 - 🧽 Otomatik temizleme: gölge ve sarı ışık düzeltilir, kurşun kalem izleri (gri) silinir, renkli baskı korunur
+- 🎯 Renkli kalem sil: yazıya dokun, o renk (tükenmez/keçeli) tüm sorudan silinir
+- Baskı yazısı koyu çekirdeğinden tanınıp korunur; soluk el yazısı izleri silinir
 - Ayarlanabilir silme gücü + elle silgi + geri al
 - Ders, konu, kaynak, sayfa, durum (Yanlış/Boş), doğru cevap, not
 - Filtreleme, arama, "Öğrendim" işareti
