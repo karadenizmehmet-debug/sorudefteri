@@ -9,6 +9,7 @@ Test kitabında yanlış yaptığın veya boş bıraktığın soruları fotoğra
 - ✂️ Kırpma, 90° ve ince döndürme (eğik çekim düzeltme)
 - 🧽 Otomatik temizleme: gölge ve sarı ışık düzeltilir; her yazı parçası ayrı nesne olarak tanınır, boyut, koyuluk, renk ve konumuna göre baskı / el yazısı ayrılır
 - Kurşun kalem ve renkli kalem (tükenmez, keçeli) izleri silinir; şık harfleri, kesir çizgisi, üsler, renkli kutular korunur
+- 🔤 Üstü işaretlendiği için silinen şık harfi sıradan tahmin edilip aynı renk ve boyda yeniden yazılır
 - 👆 Dokunarak düzelt: kalan yazıya dokun silinir, yanlış silinen baskıya dokun geri gelir; silgi ve geri al
 - Ders, konu, kaynak, sayfa, durum (Yanlış/Boş), doğru cevap, not
 - Filtreleme, arama, "Öğrendim" işareti
